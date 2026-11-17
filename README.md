@@ -73,7 +73,6 @@ lab-report-pipeline/
 ├─ scripts/              四个脚本，都跑过真实材料
 ├─ templates/            报告 md 骨架、实验目录 README 骨架
 ├─ examples/             真实输出的示例图（白底纯代码，可直接插 Word）
-├─ _制作过程.md          这东西怎么来的、哪些地方踩过坑、下一步该做什么
 └─ LICENSE               MIT
 ```
 
