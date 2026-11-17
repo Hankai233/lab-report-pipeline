@@ -1,0 +1,49 @@
+{
+  "$schema": "../../references/styles/schema.json",
+  "name": "lab-report",
+  "version": 1,
+  "default": false,
+  "confidence": "high",
+  "source": { "type": "hand-authored" },
+  "palette": {
+    "primary":   { "fillColor": "#FFFFFF", "strokeColor": "#000000" },
+    "success":   { "fillColor": "#FFFFFF", "strokeColor": "#000000" },
+    "warning":   { "fillColor": "#FFF9E6", "strokeColor": "#000000" },
+    "accent":    { "fillColor": "#F2F2F2", "strokeColor": "#000000" },
+    "danger":    { "fillColor": "#FFFFFF", "strokeColor": "#000000" },
+    "neutral":   { "fillColor": "#F2F2F2", "strokeColor": "#000000" },
+    "secondary": { "fillColor": "#FFFFFF", "strokeColor": "#000000" }
+  },
+  "roles": {
+    "service":  "primary",
+    "database": "accent",
+    "queue":    "neutral",
+    "gateway":  "primary",
+    "error":    "danger",
+    "external": "neutral",
+    "security": "secondary"
+  },
+  "shapes": {
+    "service":   "rounded=1",
+    "database":  "shape=cylinder3",
+    "queue":     "rounded=1",
+    "decision":  "rhombus",
+    "external":  "rounded=1;dashed=1",
+    "container": "swimlane;startSize=30"
+  },
+  "font": {
+    "fontFamily": "SimSun",
+    "fontSize": 12,
+    "titleFontSize": 14,
+    "titleBold": true
+  },
+  "edges": {
+    "style": "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=0;strokeColor=#000000;strokeWidth=1",
+    "arrow": "endArrow=classic;endFill=1",
+    "dashedFor": ["external"]
+  },
+  "extras": {
+    "sketch": false,
+    "globalStrokeWidth": 1
+  }
+}

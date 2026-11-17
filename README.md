@@ -74,6 +74,27 @@ py scripts/md2report.py 实验报告.md 模板.docx 实验报告.docx
 
 没模板可读时按平台自动找（Windows 微软雅黑/Consolas、macOS PingFang/Menlo、Linux Noto CJK/DejaVu）；要硬指定就 `--cjk-font 宋体 --font couriernew`，名字和字体文件路径都收。
 
+### 图：Mermaid 写结构，draw.io 收尾，样式文件先备好
+
+`templates/diagrams/` 里那几份就是"提前写好的样式"，别每次重画一遍：
+
+| 文件 | 什么时候用 |
+| --- | --- |
+| `mermaid-config.json` | `mmdc -c` 传给 mermaid CLI，出白底黑线宋体的图 |
+| `mermaid-theme.mmd` | 没有 CLI，只能贴进 Typora / 在线编辑器——把这一行粘到 `.mmd` 最前面 |
+| `sample-flow.mmd` | 一个带样式的完整流程图，照抄结构就行 |
+| `lab-style.drawio` | draw.io 图元样板：开始/处理/判断/数据/文档/注释/UML 类，打开复制即用 |
+| `drawio-style.json` | 给 drawio skill 用的预设，拷进 `~/.drawio-skill/styles/` 后 `--theme lab-report` |
+
+```bash
+npx -y @mermaid-js/mermaid-cli@11 -i 图/流程.mmd -o 图/流程.png \
+  -c templates/diagrams/mermaid-config.json -w 1000 -b white
+```
+
+一条纪律：**先用 mermaid 把结构写对，画不动了再上 draw.io 精修。** 顺序反过来，你会在第四个框上开始调对齐，然后一晚上没了。
+
+还有个坑：竖向流程图别按 12 cm 插进 Word，24px 的字会被放大成标题。按 `宽cm = 目标pt × 画布宽px ÷ (图内字号px × 28.35)` 算——实测一张 376×1348 的竖图要 9 pt 就只该占 5 cm 宽（高度 17.9 cm，刚好一页）。
+
 ---
 
 ## 七条铁律（附理由，省得你问为什么）
@@ -94,7 +115,7 @@ py scripts/md2report.py 实验报告.md 模板.docx 实验报告.docx
 lab-report-pipeline/
 ├─ SKILL.md              硬规则 + 六步工作流 + 交付自检 + 25 个坑 + 脚本说明
 ├─ scripts/              四个 Python 脚本 + 各自的 .sh 入口 + 共用字体解析 _fonts.py
-├─ templates/            报告 md 骨架、实验目录 README 骨架
+├─ templates/            报告 md 骨架、实验目录 README 骨架、diagrams/ 里的 mermaid 与 draw.io 样式
 ├─ examples/             真实输出的示例图（白底纯代码，可直接插 Word）
 ├─ .gitattributes        换行策略：.sh 一律 LF（不然 macOS 报 bad interpreter）
 └─ LICENSE               GPL-3.0

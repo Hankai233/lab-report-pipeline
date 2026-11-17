@@ -78,6 +78,27 @@ py scripts/pdf_extract.py 课件.pdf --report            # 只看体检：哪些
 - 字号按成品反推：`成品 pt ≈ 图内字号(px) × 插图宽(cm) ÷ 画布宽(px) × 28.35`，目标 6–9 pt。
 - 图宽：版心 14.66 cm；常规 12–13 cm，宽扁图 14–14.2 cm，竖长图 10–11.6 cm。
 
+## 2.1 Mermaid / draw.io 图（样式文件已备好，别手调）
+
+| 文件 | 用途 |
+| --- | --- |
+| `templates/diagrams/mermaid-config.json` | `mmdc -c` 读的主题：白底、黑线、宋体、直线折线 |
+| `templates/diagrams/mermaid-theme.mmd` | 没有 CLI 时，粘在 `.mmd` 第一行的 `%%{init}%%` 指令 |
+| `templates/diagrams/sample-flow.mmd` | 带样式的流程图示例，照抄结构 |
+| `templates/diagrams/lab-style.drawio` | draw.io 图元样板：开始/处理/判断/数据/文档/注释/UML 类，打开复制即用 |
+| `templates/diagrams/drawio-style.json` | drawio skill 的样式预设（拷到 `~/.drawio-skill/styles/` 后 `--theme lab-report`） |
+
+```powershell
+npx -y @mermaid-js/mermaid-cli@11 -i 图\流程.mmd -o 图\流程.png `
+  -c templates\diagrams\mermaid-config.json -w 1000 -b white
+```
+
+- **先 mermaid 后 draw.io**：mermaid 三行写完结构；对齐、分组、复杂 UML 再进 draw.io 精修。别一上来就拖框。
+- 只改文字，不改样式：字号 12px、线宽 1px、白底黑线、无阴影，配色顶多灰度。
+- 竖向流程图别按 12 cm 插，字会大得离谱。按宽高比定宽度：竖排通常 5–8 cm，横排（`flowchart LR`）12–13 cm，时序图 12–14 cm。
+- 反算：`宽cm = 目标pt × 画布宽px ÷ (图内字号px × 28.35)`。实测 376×1348 的竖图、字号 24px，要 9 pt → 宽 5.0 cm（高 17.9 cm，正好一页）。
+- 字体跟正文一致（模板宋体就 `SimSun`）；macOS 换成 `Songti SC`，别混用。
+
 ## 3. 代码/运行结果图（白底、只有代码）
 
 ```powershell
@@ -111,6 +132,7 @@ md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实�
 - [ ] 无"待填"占位；封面字段单行不折行；无 AI 字样
 - [ ] 数字与 `metrics.json`/日志逐项一致；随机种子写死
 - [ ] 图有图注且写明参数；图与图注同页；不超版心
+- [ ] 图样式统一（`templates/diagrams/` 那套）：字号、线宽、字体、配色在全文一致
 - [ ] 截图白底、只有代码；字体与模板一致（`--template 模板.docx` 出的图，中文和正文同一种字）
 - [ ] 附录没有源代码/中间产物（除非要求）
 - [ ] 交付目录只有 `.docx` 与必要图片，无 PDF、无 `__pycache__`、无临时 html
@@ -129,6 +151,7 @@ md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实�
 9. `pdf_extract.py --report` 点出的纯图页必须看图，别只读文本层。
 10. macOS 上截图中文变方块：装 `brew install --cask font-noto-sans-cjk`，或 `--cjk-font 宋体`（会落到 Songti.ttc）。
 11. `.sh` 带 CRLF 会报 `bad interpreter: /usr/bin/env bash^M`——仓库已用 `.gitattributes` 钉成 LF，别手工改回来。
+12. mermaid 竖向图按 12 cm 插进 Word，字会大得比标题还显眼：按第 2.1 节的公式算宽度，或者改成 `flowchart LR`。
 
 ## 7. 脚本
 
@@ -142,4 +165,4 @@ md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实�
 
 依赖：`pip install pillow python-docx pymupdf`；转换 docx/pptx 需要 `pandoc`（macOS: `brew install pandoc`）。
 
-模板：`templates/实验README.md`、`templates/report_skeleton.md`；示例：`examples/demo_code.png`、`examples/demo_output_*.png`。
+模板：`templates/实验README.md`、`templates/report_skeleton.md`；图样式：`templates/diagrams/`；示例：`examples/demo_code.png`、`examples/demo_output_*.png`。

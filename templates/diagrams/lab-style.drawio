@@ -1,0 +1,49 @@
+<mxfile host="app.diagrams.net" modified="2026-11-17T00:00:00.000Z" agent="lab-report-pipeline" version="24.0.0" type="device">
+  <diagram id="lab-style-1" name="实验报告图元样板">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="实验报告图样式样板　·　复制下方图元，样式自动一致（白底、黑线 1px、宋体 12px、无阴影）" style="text;html=0;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=SimSun;fontSize=14;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="16" width="740" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" value="开始" style="rounded=1;arcSize=40;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="处理步骤&#10;（动宾短句）" style="whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="210" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d1" value="条件判断？" style="rhombus;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="310" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" value="结束" style="rounded=1;arcSize=40;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="430" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dt1" value="输入 / 输出数据" style="shape=parallelogram;perimeter=parallelogramPerimeter;fixedSize=1;size=16;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="360" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="doc1" value="配置文件 / 日志" style="shape=document;boundedLbl=1;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="360" y="210" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="no1" value="说明：参数写在这里&#10;（窗长 256、秩 20）" style="shape=note;size=16;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;whiteSpace=wrap;html=0;fillColor=#FFF9E6;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="360" y="300" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u1" value="ExperimentData&#10;───────────────&#10;- fs: int = 1000&#10;- n: int = 512&#10;───────────────&#10;+ fft(): ndarray" style="swimlane;startSize=26;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;whiteSpace=wrap;html=0;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fontColor=#000000;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="590" y="120" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=0;endArrow=classic;endFill=1;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="s1" target="p1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=0;endArrow=classic;endFill=1;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="p1" target="d1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=0;endArrow=classic;endFill=1;strokeColor=#000000;strokeWidth=1;fontFamily=SimSun;fontSize=12;fillColor=#FFFFFF;" edge="1" parent="1" source="d1" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="使用方法&#10;① 打开本文件，复制需要的图元，粘到自己的图里，只改文字。&#10;② 字号统一 12px（约 9pt）、线宽 1px、白底黑线、不要阴影和渐变。&#10;③ 导出 PNG 时选 300 dpi；插入 Word 宽度 12–13 cm，图内字号落在 8–9 pt。&#10;④ 字体 Windows 用 SimSun；macOS 把 fontFamily 换成 Songti SC 再另存一次，别混用。" style="text;html=0;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontFamily=SimSun;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="360" y="430" width="420" height="120" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

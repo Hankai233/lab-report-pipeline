@@ -1,0 +1,15 @@
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "SimSun, 宋体, Songti SC, serif", "primaryColor": "#FFFFFF", "primaryTextColor": "#000000", "primaryBorderColor": "#000000", "secondaryColor": "#F2F2F2", "secondaryTextColor": "#000000", "tertiaryColor": "#FFFFFF", "tertiaryTextColor": "#000000", "lineColor": "#000000", "textColor": "#000000", "edgeLabelBackground": "#FFFFFF", "clusterBkg": "#FFFFFF", "clusterBorder": "#000000"}, "flowchart": {"curve": "linear", "padding": 10, "nodeSpacing": 40, "rankSpacing": 40}}}%%
+%% 示例：实验报告里最常见的"处理流程图"。风格已由上一行的 init 指令定好，正文只写结构。
+flowchart TD
+    A([开始]) --> B[读取实验数据<br/>采样率 1000 Hz]
+    B --> C{数据长度<br/>是否满足 2 的幂}
+    C -- 否 --> D[补零到 512 点]
+    C -- 是 --> E[加汉宁窗]
+    D --> E
+    E --> F[FFT 变换]
+    F --> G[计算幅频谱]
+    G --> H{是否超<br/>阈值}
+    H -- 是 --> I[标记异常频段]
+    H -- 否 --> J[记录正常]
+    I --> K([输出结果])
+    J --> K
