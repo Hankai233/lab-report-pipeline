@@ -52,7 +52,13 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-BODY_FONT = "宋体"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import _fonts                       # 与 terminal_shot.py 共用字体解析
+except ImportError:
+    _fonts = None
+
+BODY_FONT = "宋体"          # 兜底值；实际优先跟模板（见 Renderer.__init__）
 MONO_FONT = "Consolas"
 BODY_SIZE = Pt(12)
 SMALL_SIZE = Pt(10.5)
@@ -195,17 +201,25 @@ def parse_md(path: Path):
 # --------------------------------------------------------------------- 渲染
 class Renderer:
     def __init__(self, template: Path, section_map: dict | None = None,
-                 overwrite_cover: bool = False):
+                 overwrite_cover: bool = False, body_font: str | None = None,
+                 mono_font: str | None = None):
         self.doc = Document(str(template))
         self.map = section_map or {}
         self.overwrite_cover = overwrite_cover
+        # 字体默认跟模板走：插进去的正文和代码与模板原有文字同一套字
+        tpl = _fonts.docx_fonts(template) if _fonts else {}
+        self.body_font = body_font or tpl.get("body") or BODY_FONT
+        self.mono_font = mono_font or tpl.get("mono") or MONO_FONT
+        if tpl:
+            src = "模板" if not body_font and not mono_font else "参数+模板"
+            print(f"[font] 正文 {self.body_font} / 代码 {self.mono_font}（{src}）")
 
     # ---- 基础样式
     def style(self, run, size=BODY_SIZE, bold=False, mono=False, italic=False):
         run.font.size = size
         run.font.bold = bold
         run.font.italic = italic
-        name = MONO_FONT if mono else BODY_FONT
+        name = self.mono_font if mono else self.body_font
         run.font.name = name
         rPr = run._r.get_or_add_rPr()
         rFonts = rPr.find(qn("w:rFonts"))
@@ -569,22 +583,45 @@ def inspect(template: Path):
     print(f"  页面 {sec.page_width.cm:.2f}×{sec.page_height.cm:.2f} cm，"
           f"左右边距 {sec.left_margin.cm:.2f}/{sec.right_margin.cm:.2f} cm，"
           f"版心 {sec.page_width.cm - sec.left_margin.cm - sec.right_margin.cm:.2f} cm")
+    if _fonts:
+        tf = _fonts.docx_fonts(template)
+        if tf:
+            body = tf.get("body", "未知")
+            print(f"  正文中文字体：{body}"
+                  + (f"（{_fonts.describe(body)}）" if tf.get("body") else ""))
+            print(f"  西文字体：{tf.get('ascii', '未知')}；代码将用："
+                  f"{tf.get('mono') or MONO_FONT}")
 
 
 def main(argv):
-    if len(argv) >= 2 and argv[1] == "--inspect":
-        inspect(Path(argv[2]))
+    args = list(argv[1:])
+
+    def take_flag(flag):
+        """取出 --xxx value，并把两者从参数表里去掉。"""
+        if flag in args:
+            i = args.index(flag)
+            val = args[i + 1] if i + 1 < len(args) else None
+            del args[i:i + 2]
+            return val
+        return None
+
+    body_font = take_flag("--body-font")
+    mono_font = take_flag("--mono-font")
+
+    if args and args[0] == "--inspect":
+        inspect(Path(args[1]))
         return 0
-    if len(argv) < 4:
+    if len(args) < 3:
         print(__doc__)
         return 2
-    md, tpl, out = Path(argv[1]), Path(argv[2]), Path(argv[3])
+    md, tpl, out = Path(args[0]), Path(args[1]), Path(args[2])
     section_map = None
-    overwrite = "--overwrite-cover" in argv
-    if "--map" in argv:
-        section_map = json.loads(Path(argv[argv.index("--map") + 1]).read_text("utf-8"))
+    overwrite = "--overwrite-cover" in args
+    if "--map" in args:
+        section_map = json.loads(Path(args[args.index("--map") + 1]).read_text("utf-8"))
     meta, parts = parse_md(md)
-    doc = Renderer(tpl, section_map, overwrite_cover=overwrite).build(meta, parts, md.parent)
+    doc = Renderer(tpl, section_map, overwrite_cover=overwrite,
+                   body_font=body_font, mono_font=mono_font).build(meta, parts, md.parent)
     out.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out))
     print(f"[ok] {out}")

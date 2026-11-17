@@ -23,6 +23,18 @@ license: GPL-3.0
 6. **截图白底纯代码**：报告里的代码/运行结果图用脚本重绘——白底、无窗口边框、无标题栏、无提示符、无页脚，除代码本身不出现其他文字。
 7. **文档先过 pandoc**：遇到 pdf / ppt / docx 等材料，先 `doc2md.py`（内部首选 pandoc）转 md；pandoc 转不了（PDF 就是转不了）再抽文本层，仍不行才 OCR/看图。
 
+## 平台与入口
+
+脚本本体都是 Python（同一套代码跨平台）；入口两套，任选其一：
+
+| 平台 | 调用 |
+| --- | --- |
+| Windows | `py scripts\doc2md.py …` |
+| macOS / Linux | `./scripts/doc2md.sh …`（等价的 bash 入口，会自动挑 `python3`） |
+
+正文命令以 PowerShell 写，把 `py scripts\x.py` 换成 `./scripts/x.sh` 就是 bash 版。
+截图字体**跟报告模板走**：`--template 模板.docx`，别自己猜字号字体。
+
 ## 0. 收料（缺料就问）
 
 | 材料 | 用途 |
@@ -62,26 +74,34 @@ py scripts/pdf_extract.py 课件.pdf --report            # 只看体检：哪些
 ## 2. 出图
 
 - 图的图注写参数（窗长、秩、学习率、采样率、版本）。
+- matplotlib 中文字体按平台设：Windows `Microsoft YaHei`、macOS `PingFang SC`、Linux `Noto Sans CJK SC`，并设 `axes.unicode_minus=False`。
 - 字号按成品反推：`成品 pt ≈ 图内字号(px) × 插图宽(cm) ÷ 画布宽(px) × 28.35`，目标 6–9 pt。
 - 图宽：版心 14.66 cm；常规 12–13 cm，宽扁图 14–14.2 cm，竖长图 10–11.6 cm。
 
 ## 3. 代码/运行结果图（白底、只有代码）
 
 ```powershell
-py scripts/terminal_shot.py --out 终端截图\code.png --code main.py --first-line 1 --last-line 40
-py scripts/terminal_shot.py --out 终端截图\run.png --log 日志.txt --split 30
+# 字体跟模板走（推荐）：中文用模板正文字体，等宽用模板里的代码字体
+py scripts/terminal_shot.py --out 终端截图\code.png --code main.py --first-line 1 --last-line 40 --template 模板.docx
+py scripts/terminal_shot.py --out 终端截图\run.png --log 日志.txt --split 30 --template 模板.docx
+
+# bash 版只换入口：./scripts/terminal_shot.sh --out 终端截图/code.png --code main.py --template 模板.docx
 ```
 
 默认白底、无边框、无标题栏、无行号；需要时才加 `--lineno` / `--chrome "main.py"` / `--theme dark`。
 长日志用 `--split N` 切成多张；含个人路径时加 `--mask "C:\\Users\\[^\\]+"`。
+没模板可读时按平台自动找字体；要硬指定就 `--cjk-font 宋体` / `--font consolas`（名字或字体文件路径都行）。
 
 ## 4. 报告
 
 ```powershell
-py scripts/md2report.py --inspect "模板.docx"              # 看模板能对位哪些标题
+py scripts/md2report.py --inspect "模板.docx"              # 看模板能对位哪些标题、用的是哪些字体
 py scripts/md2report.py 实验报告.md 模板.docx 实验报告.docx
 py scripts/md2report.py 实验报告.md 模板.docx out.docx --map 章节映射.json
+# 要覆盖模板字体时：--body-font 黑体 --mono-font "Courier New"
 ```
+
+字体默认跟随模板（读 Normal 样式与前几十段的 rFonts），读不到才退回 宋体/Consolas。
 
 md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实验项目名称）；`# 实验报告`（三部分模板用 `# 实验预习报告`/`# 实验报告`/`# 附页`）；`## 一、xxx` 自动对位红色小节标题；`表 n` 独占一段后接表格；`![图注](图.png){width=12cm}`；三反引号代码块。
 
@@ -91,7 +111,7 @@ md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实�
 - [ ] 无"待填"占位；封面字段单行不折行；无 AI 字样
 - [ ] 数字与 `metrics.json`/日志逐项一致；随机种子写死
 - [ ] 图有图注且写明参数；图与图注同页；不超版心
-- [ ] 截图白底、只有代码
+- [ ] 截图白底、只有代码；字体与模板一致（`--template 模板.docx` 出的图，中文和正文同一种字）
 - [ ] 附录没有源代码/中间产物（除非要求）
 - [ ] 交付目录只有 `.docx` 与必要图片，无 PDF、无 `__pycache__`、无临时 html
 - [ ] 打开 docx 翻一遍：无孤行、无空白页、无错位
@@ -103,18 +123,23 @@ md 约定：顶部 `---` 填封面（课程名称/指导教师/实验日期/实�
 3. 封面字段一长就折行：填完按视觉宽度补空格，必要时轻微负字距压回一行。
 4. LibreOffice 转换留 `~$xxx.docx` 锁文件，覆盖前先删。
 5. 中文 .ps1 用 `pwsh` 7 跑，Windows PowerShell 5.1 按 ANSI 读会报语法错。
-6. matplotlib 中文要显式设 `Microsoft YaHei` 且 `axes.unicode_minus=False`。
+6. matplotlib 中文：按平台设字体（Win `Microsoft YaHei` / macOS `PingFang SC` / Linux `Noto Sans CJK SC`），并 `axes.unicode_minus=False`。
 7. 表格防拆页：表头重复 + `cantSplit` + 除末行 `keep_with_next`。
 8. 图注跟图：图段 `keep_with_next`。
 9. `pdf_extract.py --report` 点出的纯图页必须看图，别只读文本层。
+10. macOS 上截图中文变方块：装 `brew install --cask font-noto-sans-cjk`，或 `--cjk-font 宋体`（会落到 Songti.ttc）。
+11. `.sh` 带 CRLF 会报 `bad interpreter: /usr/bin/env bash^M`——仓库已用 `.gitattributes` 钉成 LF，别手工改回来。
 
 ## 7. 脚本
 
-| 脚本 | 作用 |
-| --- | --- |
-| `scripts/doc2md.py` | pdf/pptx/docx/html → md（pandoc 优先，PDF 降级抽文本+导页图） |
-| `scripts/pdf_extract.py` | PDF → 逐页文本 + 逐页 PNG，点名纯图页 |
-| `scripts/terminal_shot.py` | 代码/日志 → 白底图片（只含代码） |
-| `scripts/md2report.py` | md → 模板 docx（`--inspect` 查标题、`--map` 指定映射） |
+| 脚本 | 作用 | Windows / macOS·Linux |
+| --- | --- | --- |
+| `doc2md.py` | pdf/pptx/docx/html → md（pandoc 优先，PDF 降级抽文本+导页图） | `py scripts\doc2md.py` / `./scripts/doc2md.sh` |
+| `pdf_extract.py` | PDF → 逐页文本 + 逐页 PNG，点名纯图页 | `py scripts\pdf_extract.py` / `./scripts/pdf_extract.sh` |
+| `terminal_shot.py` | 代码/日志 → 白底图片（只含代码，字体跟模板） | `py scripts\terminal_shot.py` / `./scripts/terminal_shot.sh` |
+| `md2report.py` | md → 模板 docx（`--inspect` 查标题与字体、`--map` 指定映射） | `py scripts\md2report.py` / `./scripts/md2report.sh` |
+| `_fonts.py` | 上面两个脚本共用的字体解析（名字→文件、从模板读字体） | 不直接调用 |
+
+依赖：`pip install pillow python-docx pymupdf`；转换 docx/pptx 需要 `pandoc`（macOS: `brew install pandoc`）。
 
 模板：`templates/实验README.md`、`templates/report_skeleton.md`；示例：`examples/demo_code.png`、`examples/demo_output_*.png`。

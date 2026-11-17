@@ -15,6 +15,9 @@
     # 直接给文本
     python terminal_shot.py --out demo.png --text "np.arange(5)" "array([0, 1, 2, 3, 4])"
 
+    # 让截图和报告正文用同一套字（推荐）：直接从模板 docx 里读字体
+    python terminal_shot.py --out 图/code.png --code main.py --template 模板.docx
+
     # 需要行号 / 深色 / 脱敏 / 窗口装饰时才显式加参数
     python terminal_shot.py --code main.py --out c.png --lineno
     python terminal_shot.py --log run.log --out r.png --theme dark
@@ -30,13 +33,19 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-FONTS = {
-    "latin": [r"C:\Windows\Fonts\consola.ttf", r"C:\Windows\Fonts\lucon.ttf",
-              "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"],
-    "cjk": [r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\simsun.ttc",
-            r"C:\Windows\Fonts\simhei.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"],
-}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import _fonts                       # 与 md2report.py 共用同一套字体解析
+except ImportError:                     # 单独拷走本脚本时退化为"只认路径"
+    _fonts = None
+
+# 默认字体名（不是路径）：按平台自动落到 Windows/macOS/Linux 的等价字体。
+# 要让截图跟报告模板一致，用 --template 模板.docx，别写死。
+DEFAULT_LATIN = ["consolas", "menlo", "dejavusansmono"]
+DEFAULT_CJK = ["微软雅黑", "宋体"]
+
+FONT_OVERRIDE: dict[str, str] = {}       # --font / --cjk-font / --template 的结果
+_warned: set[str] = set()
 
 THEMES = {  # light 默认：白底黑字，适合 Word 打印
     "light": {"bg": (255, 255, 255), "bar": (245, 245, 245), "bar_text": (60, 60, 60),
@@ -49,12 +58,24 @@ THEMES = {  # light 默认：白底黑字，适合 Word 打印
 
 
 def load_font(kind: str, size: int):
-    for path in FONTS[kind]:
-        if Path(path).exists():
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                continue
+    names = [FONT_OVERRIDE[kind]] if FONT_OVERRIDE.get(kind) else \
+            (DEFAULT_CJK if kind == "cjk" else DEFAULT_LATIN)
+    for name in names:
+        path = _fonts.find_file(name) if _fonts else (name if Path(name).is_file() else None)
+        if not path:
+            continue
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    if kind not in _warned:
+        _warned.add(kind)
+        hint = ("装个中文字体（Debian/Ubuntu: sudo apt install fonts-noto-cjk；"
+                "macOS 自带 PingFang），或用 --cjk-font 指定") if kind == "cjk" else \
+               "用 --font 指定一个等宽字体"
+        print(f"[warn] 找不到{'中文' if kind == 'cjk' else '等宽'}字体（试过 {', '.join(names)}），"
+              f"已退回 Pillow 默认字体{'，中文会渲染成方块' if kind == 'cjk' else ''}。{hint}",
+              file=sys.stderr)
     return ImageFont.load_default()
 
 
@@ -163,8 +184,30 @@ def main(argv=None) -> int:
     ap.add_argument("--last-line", type=int, default=0)
     ap.add_argument("--highlight", default=r"(错误|失败|Error|ERROR|Traceback|Exception|Failed)")
     ap.add_argument("--mask", action="append", default=[], help="脱敏正则，可重复")
+    ap.add_argument("--font", metavar="NAME|TTF", help="西文（代码）字体：名字或字体文件路径")
+    ap.add_argument("--cjk-font", metavar="NAME|TTF", help="中文字体：名字或字体文件路径")
+    ap.add_argument("--template", metavar="DOCX",
+                    help="按报告模板里实际用的字体出图（推荐；截图与正文同一套字）")
     ap.set_defaults(wrap=True)
     o = ap.parse_args(argv or sys.argv[1:])
+
+    if o.template:
+        fonts = _fonts.docx_fonts(o.template) if _fonts else {}
+        if not fonts:
+            print(f"[warn] 没能从模板读到字体，改用默认字体（可再给 --cjk-font 指定）",
+                  file=sys.stderr)
+        if fonts.get("body"):
+            FONT_OVERRIDE["cjk"] = fonts["body"]
+            print(f"[font] 中文跟模板：{_fonts.describe(fonts['body'])}")
+        if fonts.get("mono"):
+            FONT_OVERRIDE["latin"] = fonts["mono"]
+            print(f"[font] 代码跟模板：{_fonts.describe(fonts['mono'])}")
+        elif fonts:
+            print("[font] 模板没给等宽字体，代码仍用 Consolas/Menlo 一类等宽")
+    if o.font:                      # 显式参数覆盖模板
+        FONT_OVERRIDE["latin"] = o.font
+    if o.cjk_font:
+        FONT_OVERRIDE["cjk"] = o.cjk_font
 
     lines = read_lines(o)
     if not lines:

@@ -36,20 +36,43 @@
 
 ## 四个脚本，各管一摊
 
+脚本本体是 Python，一套代码三平台通吃；入口按你手边的终端挑一个：
+
+```powershell
+py scripts/doc2md.py 指导书.pdf --out docs          # Windows PowerShell
+```
+```bash
+./scripts/doc2md.sh 指导书.pdf --out docs           # macOS / Linux（等价，自动挑 python3）
+```
+
 | 脚本 | 干什么 | 大白话 |
 | --- | --- | --- |
-| `scripts/doc2md.py` | PDF / PPTX / DOCX / HTML → Markdown | 先上 pandoc。顺便说：**pandoc 读不了 PDF**，报错原文是「PDF is not a supported input format」，翻译过来是「别指望我」。所以它自己会降级到 pymupdf 抽文本，抽不出来就逐页导图。 |
-| `scripts/pdf_extract.py` | PDF → 逐页文本 + 逐页 PNG，并点名「哪几页是纯图」 | 纯图页 = 关键要求都在图里、而你只 grep 了文本层、最后漏做一半的那几页。 |
-| `scripts/terminal_shot.py` | 代码 / 日志 → 白底图片 | 默认没有标题栏、没有提示符、没有页脚、没有行号。因为老师模板里已经有一个「截图」的位置了，不需要再来一个 PowerShell 窗口。 |
-| `scripts/md2report.py` | md → 学校的 docx | **以你的模板为底稿**，只往里插正文/表格/图/代码块。所以页面设置永远不会画错——这是它唯一敢打包票的事。 |
+| `scripts/doc2md.py` / `.sh` | PDF / PPTX / DOCX / HTML → Markdown | 先上 pandoc。顺便说：**pandoc 读不了 PDF**，报错原文是「PDF is not a supported input format」，翻译过来是「别指望我」。所以它自己会降级到 pymupdf 抽文本，抽不出来就逐页导图。 |
+| `scripts/pdf_extract.py` / `.sh` | PDF → 逐页文本 + 逐页 PNG，并点名「哪几页是纯图」 | 纯图页 = 关键要求都在图里、而你只 grep 了文本层、最后漏做一半的那几页。 |
+| `scripts/terminal_shot.py` / `.sh` | 代码 / 日志 → 白底图片 | 默认没有标题栏、没有提示符、没有页脚、没有行号。因为老师模板里已经有一个「截图」的位置了，不需要再来一个 PowerShell 窗口。 |
+| `scripts/md2report.py` / `.sh` | md → 学校的 docx | **以你的模板为底稿**，只往里插正文/表格/图/代码块。所以页面设置永远不会画错——这是它唯一敢打包票的事。 |
 
 ```powershell
 py scripts/pdf_extract.py 实验02-实验指导书.pdf --report           # 先体检：哪几页是纯图
 py scripts/doc2md.py 实验02-实验指导书.pdf --out docs             # 再转 md
-py scripts/terminal_shot.py --out 终端截图\code.png --code main.py --first-line 1 --last-line 40
-py scripts/md2report.py --inspect "模板.docx"                     # 模板能对位哪些标题
+py scripts/terminal_shot.py --out 终端截图\code.png --code main.py --template 模板.docx
+py scripts/md2report.py --inspect "模板.docx"                     # 模板能对位哪些标题、用了什么字体
 py scripts/md2report.py 实验报告.md 模板.docx 实验报告.docx
 ```
+
+依赖：`pip install pillow python-docx pymupdf`；转 docx/pptx 还要 `pandoc`（macOS `brew install pandoc`）。
+
+### 字体这块，认模板不认我
+
+`terminal_shot.py` 出图时可以直接读你的报告模板：
+
+```bash
+./scripts/terminal_shot.py --out 终端截图/code.png --code main.py --template 模板.docx
+```
+
+它从模板的 Normal 样式和前几十段里取字体，中文用模板正文那套、西文用模板的代码字体，于是截图和正文是同一种字，不是我随手挑的 Consolas。`md2report.py` 同理——插进 docx 的正文/代码也跟随模板，而不是硬写宋体。
+
+没模板可读时按平台自动找（Windows 微软雅黑/Consolas、macOS PingFang/Menlo、Linux Noto CJK/DejaVu）；要硬指定就 `--cjk-font 宋体 --font couriernew`，名字和字体文件路径都收。
 
 ---
 
@@ -70,9 +93,10 @@ py scripts/md2report.py 实验报告.md 模板.docx 实验报告.docx
 ```text
 lab-report-pipeline/
 ├─ SKILL.md              硬规则 + 六步工作流 + 交付自检 + 25 个坑 + 脚本说明
-├─ scripts/              四个脚本，都跑过真实材料
+├─ scripts/              四个 Python 脚本 + 各自的 .sh 入口 + 共用字体解析 _fonts.py
 ├─ templates/            报告 md 骨架、实验目录 README 骨架
 ├─ examples/             真实输出的示例图（白底纯代码，可直接插 Word）
+├─ .gitattributes        换行策略：.sh 一律 LF（不然 macOS 报 bad interpreter）
 └─ LICENSE               GPL-3.0
 ```
 
@@ -81,8 +105,9 @@ lab-report-pipeline/
 ## 三个好笑的坑（全文在第 6 节，这里挑最冤的）
 
 - **中文 `.ps1` 必须用 `pwsh` 7 跑。** Windows PowerShell 5.1 会按 ANSI 读你的 UTF-8，然后当场报语法错，让你怀疑自己写的是不是 PowerShell。
-- **LibreOffice 会留一个 `~$xxx.docx`。** 它长得像你的报告，但它不是你的报告。覆盖前先删。
-- **matplotlib 里中文默认全是方框。** 不是字体没装，是你没设 `Microsoft YaHei` 和 `axes.unicode_minus=False`。
+- **`~$` 开头的文件是 LibreOffice 的锁。** 它长得像你的报告，但它不是你的报告。覆盖前先删。
+- **matplotlib 里中文默认全是方框。** 不是字体没装，是你没设字体（Win `Microsoft YaHei` / macOS `PingFang SC` / Linux `Noto Sans CJK SC`）和 `axes.unicode_minus=False`。
+- **`.sh` 用 CRLF 存盘会报 `bad interpreter: /usr/bin/env bash^M`。** 那个 `^M` 是回车，藏在你 shebang 的末尾，肉眼看不见。仓库用 `.gitattributes` 钉死了 LF。
 
 ---
 
@@ -99,6 +124,9 @@ A：能。它不改你的模板，只往里面塞内容。模板从「预习 / �
 
 **Q：那为什么不直接截图呢？**
 A：因为你的截图里有用户名、有壁纸、有回收站图标，还有 31 条未读通知。
+
+**Q：我在 macOS 上，中文出图是方块。**
+A：那是系统没给等宽字体配中文。要么 `brew install --cask font-noto-sans-cjk`，要么直接 `--cjk-font 宋体`——它会在本机落到 `Songti.ttc`，字和模板正文对得上。最省事的还是 `--template 模板.docx`，让模板自己说用哪套字。
 
 **Q：中间产物会不会很占地方？**
 A：会。所以每个子任务只留四件套：`脚本.py / 日志.txt / metrics.json / *.png`。四件套缺一个，报告那一节就没有可信来源——这句话它是认真的。
