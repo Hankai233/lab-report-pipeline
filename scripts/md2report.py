@@ -31,19 +31,26 @@
 ----
     python md2report.py 报告.md 模板.docx 输出.docx
     python md2report.py 报告.md 模板.docx 输出.docx --map 章节映射.json
-    python md2report.py --inspect 模板.docx        # 先看看模板里能对位哪些标题
-    python md2report.py 报告.md 模板.docx out.docx --overwrite-cover  # 连模板里预填的值也覆盖
+    python md2report.py 报告.md 模板.docx 输出.docx --metrics outputs/metrics.json
+    python md2report.py --inspect 模板.docx         # 模板认出了哪几部分、哪几个小节、什么字体
+    python md2report.py 报告.md 模板.docx --check   # 干跑：逐条报“对位/对不上”，不落盘
+    python md2report.py 报告.md 模板.docx out.docx --overwrite-cover  # 连模板预填的封面也覆盖
+    python md2report.py 报告.md 模板.docx out.docx --allow-missing    # 允许个别小节对不上
 
-自检（建议每次都做）::
+**先 --inspect 再 --check 再正式渲染**：对位失败会直接中止（不落盘），避免交出一份缺章节的报告。
+md 里写 `{{source.lines}}` 这样的占位，用 --metrics 从 metrics.json 取值，避免手抄数字漂移。
+
+自检（建议每次都做；pagelayout.py / report_check.py 已封装这两步）::
 
     soffice --headless --convert-to pdf --outdir .cache 报告.docx
-    python -c "import pymupdf;d=pymupdf.open('.cache/报告.pdf');[p.get_pixmap(dpi=100).save(f'.cache/p{i}.png') for i,p in enumerate(d,1)]"
+    python scripts/pagelayout.py 报告.docx
 """
 from __future__ import annotations
 
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 from docx import Document
@@ -73,6 +80,7 @@ COVER_LABELS = ("课程名称", "指导教师", "实验日期", "学部（学院
                 "专业班级", "实验地点", "学生姓名", "姓名", "学号", "同组人",
                 "实验项目名称", "实验题目")
 CN_NUM = "一二三四五六七八九十"
+METRICS_RX = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")   # {{metrics.key.path}} 占位
 
 
 # --------------------------------------------------------------------- md 解析
@@ -137,6 +145,10 @@ def parse_blocks(lines):
                            float(m.group(3)) if m.group(3) else None))
             i += 1
             continue
+        if s.startswith("!["):
+            # 常见原因：`{width=12cm}{width=12cm}` 重复、路径带空格未转义、属性写成全角括号。
+            # 不拦的话这行退化成普通段落，图静默消失，只能靠数图发现。
+            raise SystemExit(f"[图片行] 无法解析，图会静默丢失：{s[:120]}")
         # 列表
         if re.match(r"^[-*]\s+", s):
             items = []
@@ -168,8 +180,10 @@ def parse_blocks(lines):
     return blocks
 
 
-def parse_md(path: Path):
-    meta, text = split_front_matter(path.read_text(encoding="utf-8"))
+def parse_md(path: Path, text: str | None = None):
+    if text is None:
+        text = path.read_text(encoding="utf-8")
+    meta, text = split_front_matter(text)
     parts, current, section = {}, None, None
     for raw in text.splitlines():
         line = raw.rstrip()
@@ -199,11 +213,26 @@ def parse_md(path: Path):
 
 
 # --------------------------------------------------------------------- 渲染
+def ensure_table_style(doc):
+    """学校模板常没有 Table Grid 样式，python-docx 赋样式会 KeyError。缺则补一个带框线的。"""
+    if "Table Grid" in [s.name for s in doc.styles]:
+        return
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    st = doc.styles.add_style("Table Grid", WD_STYLE_TYPE.TABLE)
+    borders = "".join(f'<w:{e} w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
+                      for e in ("top", "left", "bottom", "right", "insideH", "insideV"))
+    st.element.append(parse_xml(
+        f'<w:tblPr {nsdecls("w")}><w:tblBorders>{borders}</w:tblBorders></w:tblPr>'))
+
+
 class Renderer:
     def __init__(self, template: Path, section_map: dict | None = None,
                  overwrite_cover: bool = False, body_font: str | None = None,
                  mono_font: str | None = None):
         self.doc = Document(str(template))
+        ensure_table_style(self.doc)
         self.map = section_map or {}
         self.overwrite_cover = overwrite_cover
         # 字体默认跟模板走：插进去的正文和代码与模板原有文字同一套字
@@ -256,24 +285,47 @@ class Renderer:
         return p
 
     # ---- 模板结构识别
-    def find_part_title(self, part):
-        hints = PART_HINTS[part]
+    def _norm(self, p):
+        return re.sub(r"[\s　]+", "", p.text)
+
+    def part_candidates(self, part) -> list:
+        """候选的“部分标题”段落。
+
+        模板最常见的坑：附页标题是「XX大学实验报告（附页）」，含"实验报告"四字，子串匹配会把
+        main 的标题认成附页标题，之后所有小节都"对不上"。这里按部分互斥过滤。
+        """
         cands = [p for p in self.doc.paragraphs if p.text.strip()]
-        # 先找完全含 hints 且最短的段落（避免命中正文里的同名句）
-        for hint in hints:
-            hits = [p for p in cands if hint in p.text]
-            if part == "main":
-                hits = [p for p in hits if not any(h in p.text for h in PART_HINTS["pre"])]
-            if hits:
-                return min(hits, key=lambda p: len(p.text.strip()))
-        return None
+        out = []
+        for hint in PART_HINTS[part]:
+            hits = [p for p in cands if hint in self._norm(p)]
+            keep = []
+            for p in hits:
+                t = self._norm(p)
+                if part != "pre" and any(h in t for h in PART_HINTS["pre"]):
+                    continue
+                if part == "main" and any(h in t for h in PART_HINTS["appendix"]):
+                    continue
+                keep.append(p)
+            if keep:
+                out = keep
+                break
+        return out
+
+    def find_part_title(self, part):
+        cands = self.part_candidates(part)
+        if not cands:
+            return None
+        if len(cands) > 1 and len({len(c.text.strip()) for c in cands}) == 1:
+            print(f"[warn] {part} 有 {len(cands)} 个同长度候选标题，取第一个："
+                  f"{cands[0].text.strip()[:30]}", file=sys.stderr)
+        return min(cands, key=lambda p: len(p.text.strip()))
 
     def part_headings(self, part) -> list:
         title = self.find_part_title(part)
+        if title is None:
+            return []
         paras = self.doc.paragraphs
-        start = 0
-        if title is not None:
-            start = next(i for i, q in enumerate(paras) if q._p is title._p) + 1
+        start = next(i for i, q in enumerate(paras) if q._p is title._p) + 1
         heads = []
         for p in paras[start:]:
             txt = p.text.strip()
@@ -300,17 +352,34 @@ class Renderer:
                     break
         return best
 
-    def match_heading(self, part, md_title, heads):
+    NUM_RX = re.compile(rf"^([{CN_NUM}]+)\s*[、.]")
+
+    def match_heading(self, part, md_title, heads, used: set | None = None):
+        """md 小节 → 模板小节。
+
+        有中文序号时必须按序号对位：否则「六、实验总结」会因为含"实验"二字撞上「一、实验目的」，
+        静默塞进错误的位置。没有序号才退回公共子串打分。
+        """
         if self.map:
             for k, v in self.map.items():
                 if k in md_title:
                     return next((h for h in heads if v in h.text), None)
+        m = self.NUM_RX.match(md_title.strip())
+        if m:
+            num = m.group(1)
+            for h in heads:
+                hm = self.NUM_RX.match(h.text.strip())
+                if hm and hm.group(1) == num and (used is None or id(h._p) not in used):
+                    return h
+            return None
         best, best_p = 0, None
         for h in heads:
+            if used is not None and id(h._p) in used:
+                continue
             sc = self.score(md_title, h.text)
             if sc > best:
                 best, best_p = sc, h
-        return best_p if best >= 2 else None
+        return best_p if best >= 3 else None
 
     # ---- 块渲染
     def render(self, anchor, blocks, base: Path):
@@ -514,36 +583,46 @@ class Renderer:
                         rPr.append(sp)
 
     # ---- 组装
-    def build(self, meta, parts, base: Path):
-        three = self.find_part_title("pre") is not None
-        targets = ("pre", "main", "appendix") if three else ("main",)
+    def build(self, meta, parts, base: Path, allow_missing: bool = False):
+        targets = [p for p in ("pre", "main", "appendix") if self.find_part_title(p)]
+        if not targets:
+            raise SystemExit("模板里认不出任何部分标题：先跑 --inspect 看结构，这不像实验报告模板")
+        missing = []
         for part in targets:
-            if self.find_part_title(part) is None:
+            if part == "appendix":
+                if parts.get(part):
+                    self.fill_cover(part, meta, overwrite=self.overwrite_cover)
+                    self.render_appendix(parts.get(part, []), base)
                 continue
             self.fill_cover(part, meta, overwrite=self.overwrite_cover)
-            if part == "appendix":
-                self.render_appendix(parts.get(part, []), base)
-                continue
             heads = self.part_headings(part)
             for h in heads:
                 self.outline(h, 0)
+            if not heads:
+                print(f"[warn] {part} 部分没有找到任何「一、二、……」小节标题", file=sys.stderr)
+            used: set[int] = set()
             for sec in parts.get(part, []):
                 if sec["title"] in ("__intro__", ""):
                     continue
-                head = self.match_heading(part, sec["title"], heads)
                 blocks = parse_blocks(sec["lines"])
                 if not blocks:
                     continue
+                head = self.match_heading(part, sec["title"], heads, used)
                 if head is None:
-                    print(f"[跳过] 模板中无对应小节：{part} / {sec['title']}",
-                          file=sys.stderr)
+                    missing.append((part, sec["title"]))
                     continue
+                used.add(id(head._p))
                 self.render(head, blocks, base)
         # 附页另起一页
-        if three:
-            p = self.find_part_title("appendix")
-            if p is not None:
-                p.paragraph_format.page_break_before = True
+        if parts.get("appendix") and self.find_part_title("appendix") is not None:
+            self.find_part_title("appendix").paragraph_format.page_break_before = True
+        if missing:
+            msg = "\n".join(f"  - {p} / {t}" for p, t in missing)
+            if not allow_missing:
+                raise SystemExit(
+                    "[对位失败] 这些 md 小节在模板里找不到对应标题，已中止（不落盘）：\n" + msg +
+                    "\n  先跑 --check 看模板有哪些标题，再改小节标题或加 --map 映射文件。")
+            print("[跳过] 未对位小节：\n" + msg, file=sys.stderr)
         return self.doc
 
     def render_appendix(self, sections, base: Path):
@@ -569,16 +648,66 @@ class Renderer:
             anchor = self.render(anchor, parse_blocks(sec["lines"]), base)
 
 
+def fill_metrics(text: str, metrics: dict) -> str:
+    """把 {{a.b.c}} 换成 metrics.json 里的值；键不存在直接报错。
+
+    "11 个场景 / 12 个函数 / 855 行"这类数字手抄必然漂（改了实验忘了改字），
+    所以要求从 metrics.json 取，取不到就失败，而不是印一个错的。
+    """
+    miss: list[str] = []
+
+    def sub(m):
+        cur = metrics
+        for k in m.group(1).split("."):
+            if not isinstance(cur, dict) or k not in cur:
+                miss.append(m.group(1))
+                return m.group(0)
+            cur = cur[k]
+        return f"{cur:g}" if isinstance(cur, float) else str(cur)
+
+    out = METRICS_RX.sub(sub, text)
+    if miss:
+        raise SystemExit("[metrics] metrics.json 里没有这些键：" + ", ".join(sorted(set(miss))))
+    return out
+
+
+def save_docx(doc, out: Path) -> None:
+    """保存，容忍 Word/LibreOffice 留下的 ~$ 锁文件。"""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(3):
+        for lock in out.parent.glob("~$*.docx"):
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+        try:
+            doc.save(str(out))
+            return
+        except PermissionError:
+            if attempt == 2:
+                raise SystemExit(
+                    f"[保存失败] {out} 被占用：关闭 Word/LibreOffice 后重试，"
+                    f"或手动删除 {out.parent / ('~$' + out.name)}")
+            time.sleep(2.0)
+
+
 def inspect(template: Path):
     doc = Document(str(template))
+    ensure_table_style(doc)
+    r = Renderer.__new__(Renderer)
+    r.doc = doc
+    r.map = {}
     print(f"# {template}")
-    for p in doc.paragraphs:
-        t = p.text.strip()
-        if not t:
-            continue
-        if any(h in t for hs in PART_HINTS.values() for h in hs) or \
-           re.match(rf"^[{CN_NUM}]+[、.]", t):
-            print(f"  [{len(t):>2}] {t}")
+    for part in ("pre", "main", "appendix"):
+        t = r.find_part_title(part)
+        heads = r.part_headings(part)
+        print(f"  部分 {part:<9}: {t.text.strip()[:40] if t else '（模板没有这部分）'}"
+              f"  小节 {len(heads)}")
+        for h in heads:
+            print(f"      小节标题：{h.text.strip()}")
+    print("  封面/前几段：")
+    for p in [q for q in doc.paragraphs if q.text.strip()][:5]:
+        print(f"      {p.text.strip()[:70]}")
     sec = doc.sections[0]
     print(f"  页面 {sec.page_width.cm:.2f}×{sec.page_height.cm:.2f} cm，"
           f"左右边距 {sec.left_margin.cm:.2f}/{sec.right_margin.cm:.2f} cm，"
@@ -593,38 +722,114 @@ def inspect(template: Path):
                   f"{tf.get('mono') or MONO_FONT}")
 
 
+def check(md: Path, tpl: Path, metrics: Path | None = None,
+          body_font: str | None = None, mono_font: str | None = None) -> int:
+    """干跑：不落盘，只报“md 每个小节对位到哪里 / 哪个对不上”。"""
+    text = md.read_text(encoding="utf-8")
+    if metrics:
+        text = fill_metrics(text, json.loads(metrics.read_text(encoding="utf-8")))
+    elif METRICS_RX.search(text):
+        raise SystemExit("[metrics] md 里有 {{...}} 占位，请加 --metrics outputs/metrics.json")
+    meta, parts = parse_md(md, text)
+    r = Renderer(tpl, body_font=body_font, mono_font=mono_font)
+    ok = True
+    print(f"# {md.name} → {tpl.name}")
+    for part in ("pre", "main", "appendix"):
+        t = r.find_part_title(part)
+        if t is None:
+            continue
+        heads = r.part_headings(part)
+        print(f"PART {part:<9} title={t.text.strip()[:32]!r} headings={len(heads)}")
+        if part == "appendix":
+            print("     （附页按 md 小节顺序自由排版，无需对位）")
+            continue
+        if not heads:
+            print("     [FAIL] 这段没有小节标题可对位")
+            ok = False
+        used: set[int] = set()
+        for sec in parts.get(part, []):
+            if sec["title"] in ("__intro__", ""):
+                continue
+            h = r.match_heading(part, sec["title"], heads, used)
+            if h is None:
+                ok = False
+                print(f"     MISS {sec['title']}")
+            else:
+                used.add(id(h._p))
+                print(f"     OK   {sec['title']}  ->  {h.text.strip()}")
+    cover = [p.text.strip() for p in r.doc.paragraphs[:10] if p.text.strip()]
+    print("COVER " + " | ".join(c[:48] for c in cover[:3]))
+    print("VERDICT " + ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+def _parse(argv):
+    """极简参数解析：位置参数 + --flag / --key value。"""
+    pos, opts = [], {}
+    takes_value = ("map", "metrics", "body-font", "mono-font")
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith("--"):
+            key = a[2:]
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--") and key in takes_value:
+                opts[key] = argv[i + 1]
+                i += 2
+            else:
+                opts[key] = True
+                i += 1
+        else:
+            pos.append(a)
+            i += 1
+    return pos, opts
+
+
 def main(argv):
-    args = list(argv[1:])
+    pos, opts = _parse(list(argv[1:]))
+    body_font = opts.get("body-font") if isinstance(opts.get("body-font"), str) else None
+    mono_font = opts.get("mono-font") if isinstance(opts.get("mono-font"), str) else None
 
-    def take_flag(flag):
-        """取出 --xxx value，并把两者从参数表里去掉。"""
-        if flag in args:
-            i = args.index(flag)
-            val = args[i + 1] if i + 1 < len(args) else None
-            del args[i:i + 2]
-            return val
-        return None
-
-    body_font = take_flag("--body-font")
-    mono_font = take_flag("--mono-font")
-
-    if args and args[0] == "--inspect":
-        inspect(Path(args[1]))
+    if opts.get("inspect"):
+        inspect(Path(pos[0]))
         return 0
-    if len(args) < 3:
+    if opts.get("check"):
+        if len(pos) < 2:
+            print("用法：md2report.py 报告.md 模板.docx --check [--metrics m.json]", file=sys.stderr)
+            return 2
+        return check(Path(pos[0]), Path(pos[1]),
+                     Path(opts["metrics"]) if isinstance(opts.get("metrics"), str) else None,
+                     body_font, mono_font)
+    if len(pos) < 3:
         print(__doc__)
         return 2
-    md, tpl, out = Path(args[0]), Path(args[1]), Path(args[2])
-    section_map = None
-    overwrite = "--overwrite-cover" in args
-    if "--map" in args:
-        section_map = json.loads(Path(args[args.index("--map") + 1]).read_text("utf-8"))
-    meta, parts = parse_md(md)
-    doc = Renderer(tpl, section_map, overwrite_cover=overwrite,
-                   body_font=body_font, mono_font=mono_font).build(meta, parts, md.parent)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(str(out))
-    print(f"[ok] {out}")
+
+    md, tpl, out = Path(pos[0]), Path(pos[1]), Path(pos[2])
+    text = md.read_text(encoding="utf-8")
+    if isinstance(opts.get("metrics"), str):
+        text = fill_metrics(text, json.loads(Path(opts["metrics"]).read_text(encoding="utf-8")))
+    elif METRICS_RX.search(text):
+        raise SystemExit("[metrics] md 里有 {{...}} 占位，请加 --metrics outputs/metrics.json")
+
+    section_map = (json.loads(Path(opts["map"]).read_text(encoding="utf-8"))
+                   if isinstance(opts.get("map"), str) else None)
+    meta, parts = parse_md(md, text)
+    try:
+        doc = Renderer(tpl, section_map, overwrite_cover=bool(opts.get("overwrite-cover")),
+                       body_font=body_font, mono_font=mono_font) \
+            .build(meta, parts, md.parent, allow_missing=bool(opts.get("allow-missing")))
+    except SystemExit:
+        # 旧产物留着会被当成"刚生成的报告"交出去，这里清掉并说明
+        if out.exists():
+            try:
+                out.unlink()
+                print(f"[清理] 删除上一次的旧产物 {out.name}（本次未生成新文件）", file=sys.stderr)
+            except OSError:
+                print(f"[提示] 旧产物 {out.name} 未删除，注意它不是刚生成的", file=sys.stderr)
+        raise
+    tmp = out.with_name(out.stem + ".tmp" + out.suffix)
+    save_docx(doc, tmp)
+    tmp.replace(out)
+    print(f"[ok] {out}  ({out.stat().st_size} 字节)")
     return 0
 
 

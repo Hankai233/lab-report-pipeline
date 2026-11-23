@@ -36,16 +36,31 @@
 
 ## 3. 完整复现命令
 
-```powershell
-# 0) 环境自检
-<命令>
+一条命令跑完（见 `pipeline.sh`），下面拆开写便于理解：
 
-# 1) 主线实验
-<命令> 2>&1 | Tee-Object -FilePath "<日志.txt>" -Encoding utf8
+```bash
+# 0) 环境自检：认解释器/缺包/缺工具（中文详情在 doctor_report.txt）
+$PY scripts/doctor.py
 
-# 2) 生成报告
-<命令：md2report.py 报告.md 模板.docx 报告.docx>
+# 1) 主线实验：编译 + 跑各场景，日志落 outputs/logs/
+./run_lab.sh
+
+# 2) 会话记录 + 指标（报告数字的唯一来源）
+$PY scripts/make_transcript.py --in outputs/scenarios --log outputs/logs --out outputs/transcripts
+$PY make_metrics.py
+
+# 3) 图与白底截图（宽度按目标字号反推并写回 md）
+$PY make_figures.py
+$PY scripts/shots.py --spec shots.json --apply-md 实验报告.md
+
+# 4) 报告：先干跑对位，再生成，最后过门禁
+$PY scripts/md2report.py 实验报告.md 实验报告模板.docx --check --metrics outputs/metrics.json
+$PY scripts/md2report.py 实验报告.md 实验报告模板.docx 实验报告.docx --overwrite-cover --metrics outputs/metrics.json
+$PY scripts/report_check.py 实验报告.md --docx 实验报告.docx --metrics outputs/metrics.json --body-width 14.66
+$PY scripts/pagelayout.py 实验报告.docx --body-width 14.66 --out .cache/layout.txt
 ```
+
+`report_check.py` 与 `pagelayout.py` 都必须 PASS 再交付；不 PASS 就改，别靠肉眼翻页。
 
 ## 4. 关键结果一览（本次运行）
 
